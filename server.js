@@ -183,7 +183,7 @@ app.post('/jaun', async (req, res) => {
     // AI agent — with shared memory context
     const memoryCtx = buildMemoryContext(src);
     const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: " + src + "\nPertanyaan: " + parsed.message;
-    const result = await route(fullMessage, parsed.agent === 'auto' ? null : parsed.agent);
+    const result = await route(parsed.message, parsed.agent === 'auto' ? null : parsed.agent, fullMessage);
 
     addMessage(src, 'jaun', result.response);
 

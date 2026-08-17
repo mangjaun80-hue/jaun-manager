@@ -47,24 +47,24 @@ function analyzeTask(message) {
   const maxScore = Math.max(...Object.values(scores));
   
   if (maxScore === 0) {
-    return 'coder';
+    return 'quick';
   }
   
   const winner = Object.entries(scores).find(([, score]) => score === maxScore)[0];
   return winner;
 }
 
-async function route(message, forceAgent = null) {
-  let agentName = forceAgent || analyzeTask(message);
+async function route(userMessage, forceAgent = null, fullMessage = null) {
+  let agentName = forceAgent || analyzeTask(userMessage);
   const agent = agents[agentName];
   
   if (!agent) {
     throw new Error(`Agent '${agentName}' tidak ditemukan`);
   }
   
-  console.log(`[Router] Task: "${message.substring(0, 50)}..." → Agent: ${agent.name}`);
+  console.log(`[Router] "${userMessage.substring(0, 50)}..." → Agent: ${agent.name}`);
   
-  const response = await agent.run(message);
+  const response = await agent.run(fullMessage || userMessage);
   
   return {
     agent: agent.name,
