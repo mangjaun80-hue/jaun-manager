@@ -2,10 +2,18 @@ const config = require('../config');
 
 class EtsyClient {
   constructor() {
-    this.accessToken = config.etsy.tokenJson.access_token;
-    this.refreshToken = config.etsy.tokenJson.refresh_token;
-    this.shopId = config.etsy.shopId;
+    const tokenJson = config.etsy.tokenJson || {};
+    this.accessToken = tokenJson.access_token || '';
+    this.refreshToken = tokenJson.refresh_token || '';
+    this.shopId = config.etsy.shopId || '';
     this.baseUrl = 'https://openapi.etsy.com/v3';
+    this.configured = !!(config.etsy.keystring && this.accessToken);
+    
+    if (!this.configured) {
+      console.log('[Etsy] ⚠️ Not configured - set ETSY_KEYSTRING, ETSY_SECRET, ETSY_SHOP_ID, ETSY_TOKEN_JSON');
+      this.headers = {};
+      return;
+    }
     
     // Etsy token needs user_id prefix - extract from refresh_token
     let formattedToken = this.accessToken;
@@ -22,6 +30,9 @@ class EtsyClient {
   }
 
   async request(endpoint, options = {}) {
+    if (!this.configured) {
+      throw new Error('Etsy not configured. Set env vars first.');
+    }
     const url = `${this.baseUrl}${endpoint}`;
     
     try {
