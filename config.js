@@ -10,7 +10,7 @@ const config = {
     }
   },
   bigpickle: {
-    apiKey: process.env.API_KEYS || process.env.TEAM_KEY || '',
+    apiKey: process.env.TEAM_KEY || '',
     baseUrl: 'https://opencode.ai/zen/v1',
     model: process.env.OPENCODE_MODEL || 'big-pickle'
   },
