@@ -11,173 +11,246 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
+// ===================== SHARED MEMORY STORE =====================
+const MAX_HISTORY = 50;
+const memory = {
+  conversations: {},
+  facts: []
+};
+
+function getHistory(source) {
+  if (!memory.conversations[source]) memory.conversations[source] = [];
+  return memory.conversations[source];
+}
+
+function addMessage(source, role, text) {
+  const hist = getHistory(source);
+  hist.push({ role, text, ts: Date.now() });
+  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
+  // Mirror ke semua source biar memory nyambung
+  for (const src of Object.keys(memory.conversations)) {
+    if (src !== source) {
+      const other = memory.conversations[src];
+      const last = other[other.length - 1];
+      if (!last || last.text !== text) {
+        other.push({ role: `[${source}] ${role}`, text, ts: Date.now() });
+        if (other.length > MAX_HISTORY) other.splice(0, other.length - MAX_HISTORY);
+      }
+    }
+  }
+}
+
+function addFact(fact) {
+  memory.facts.push({ fact, ts: Date.now() });
+  if (memory.facts.length > 100) memory.facts.splice(0, memory.facts.length - 100);
+}
+
+function buildMemoryContext(source) {
+  const hist = getHistory(source);
+  const recent = hist.slice(-20);
+  const facts = memory.facts.slice(-10);
+
+  let ctx = '';
+  if (facts.length > 0) {
+    ctx += '[INGATAN FAKTA]\n' + facts.map(f => `- ${f.fact}`).join('\n') + '\n\n';
+  }
+  if (recent.length > 0) {
+    ctx += '[RIWAYAT PERCAKAPAN TERAKHIR]\n' + recent.map(m => `${m.role}: ${m.text}`).join('\n') + '\n\n';
+  }
+  return ctx;
+}
+
+// ===================== JAUN SYSTEM PROMPT =====================
 const JAUN_CONTEXT = `
-[INSTRUKSI] Jawablah SELALALU dalam Bahasa Indonesia yang santai, singkat, dan jelas.
-Gunakan [PENGETAHUAN] di bawah saat menjawab pertanyaan.
+[JATI DIRI]
+Kamu adalah JAUN — asisten pribadi digital AI yang cerdas, ramah, dan helpful.
+Kamu punya memory yang nyambung dari semua interface (Robot/HP, Telegram, Laptop).
+Ingat semua percakapan user di mana pun terjadi. Sebut user "Mang Jaun" atau "Boss".
 
 [PENGETAHUAN]
-JAUN 78 adalah asisten pribadi digital berbasis AI. Aplikasinya punya 3 tab:
-HUD (status sistem + ringkasan agenda), CHAT (ngobrol dengan AI), dan AGENDA
-(manajemen jadwal: tambah, tandai selesai, hapus agenda).
-JAUN 78 bisa: mengatur dan mengingatkan agenda harian, menyarankan jadwal
-meeting/transport/anggaran harian, dan menjawab pertanyaan umum.
-Panggilan nama AI adalah "JAUN".
+JAUN 78 adalah aplikasi asisten pribadi digital berbasis AI.
+Fitur: HUD (status), CHAT (ngobrol AI), AGENDA (jadwal), SUARA (TTS/STT).
+Kamu bisa bantu: agenda, jadwal, coding, debug, review, manage Etsy store.
 
-Kamu juga bisa melakukan coding tasks:
-- "code: buatkan fungsi factorial" → akan diproses oleh CODER (7B)
-- "debug: fix error di line 42" → akan diproses oleh DEBUGGER (7B)
-- "review: cek kode saya" → akan diproses oleh REVIEWER (Big Pickle)
-- "quick: apa itu API?" → akan diproses oleh QUICK (3B)
-
-Kamu juga bisa manage Etsy store:
-- "etsy:list" → list semua produk
-- "etsy:desc [produk]" → generate deskripsi
-- "etsy:tags [produk]" → generate SEO tags
-- "etsy:reply [pesan]" → draft reply customer
-- "etsy:analytics" → analisis penjualan
-
-Gunakan routing yang tepat berdasarkan isi pesan.
+[COMMANDS]
+- "code: ..." → Coding task (CODER agent)
+- "debug: ..." → Debug task (DEBUGGER agent)
+- "review: ..." → Code review (REVIEWER agent)
+- "quick: ..." → Quick question (QUICK agent)
+- "etsy:list/desc/tags/reply/analytics" → Etsy store commands
+- "ingat: ..." → Simpan fakta ke memory
+- "lupa: ..." → Hapus fakta dari memory
 `.trim();
 
-// Parse command from message
+// Parse commands
 function parseCommand(message) {
   const lower = message.toLowerCase().trim();
-  
-  // Explicit agent commands
+
   if (lower.startsWith('code:')) return { agent: 'coder', message: message.substring(5).trim() };
   if (lower.startsWith('debug:')) return { agent: 'debugger', message: message.substring(6).trim() };
   if (lower.startsWith('review:')) return { agent: 'reviewer', message: message.substring(7).trim() };
   if (lower.startsWith('quick:')) return { agent: 'quick', message: message.substring(6).trim() };
-  
-  // Etsy commands
+
   if (lower.startsWith('etsy:list')) return { etsy: 'list' };
   if (lower.startsWith('etsy:stat')) return { etsy: 'stat' };
   if (lower.startsWith('etsy:desc')) return { etsy: 'desc', message: message.substring(9).trim() };
   if (lower.startsWith('etsy:tags')) return { etsy: 'tags', message: message.substring(9).trim() };
   if (lower.startsWith('etsy:reply')) return { etsy: 'reply', message: message.substring(10).trim() };
   if (lower.startsWith('etsy:analytics')) return { etsy: 'analytics' };
-  
-  // Auto-route
+
+  if (lower.startsWith('ingat:')) return { fact: message.substring(6).trim() };
+  if (lower.startsWith('lupa:')) return { unfact: message.substring(5).trim() };
+
   return { agent: 'auto', message };
 }
 
-// Main JAUN endpoint (compatible with Android app)
+// ===================== MAIN ENDPOINT =====================
 app.post('/jaun', async (req, res) => {
   try {
-    const { message, key } = req.body;
-    
+    const { message, key, source } = req.body;
+
     if (!message) {
       return res.json({ ok: false, reply: 'Pesan kosong' });
     }
-    
-    console.log(`[JAUN] Request: "${message.substring(0, 80)}..."`);
-    
+
+    const src = source || 'unknown';
+    console.log(`[JAUN][${src}] "${message.substring(0, 80)}..."`);
+
+    addMessage(src, 'user', message);
     const parsed = parseCommand(message);
-    
-    // Handle Etsy commands
+
+    // Fact commands
+    if (parsed.fact) {
+      addFact(parsed.fact);
+      addMessage(src, 'jaun', `Oke, aku inget: "${parsed.fact}"`);
+      return res.json({ ok: true, reply: `Oke Boss, aku simpen: "${parsed.fact}"`, agent: 'JAUN' });
+    }
+    if (parsed.unfact) {
+      memory.facts = memory.facts.filter(f => !f.fact.toLowerCase().includes(parsed.unfact.toLowerCase()));
+      addMessage(src, 'jaun', `Oke, aku lupa: "${parsed.unfact}"`);
+      return res.json({ ok: true, reply: `Oke Boss, aku lupa tentang: "${parsed.unfact}"`, agent: 'JAUN' });
+    }
+
+    // Etsy commands
     if (parsed.etsy) {
       let reply = '';
-      
+
       switch (parsed.etsy) {
-        case 'list':
+        case 'list': {
           const listings = await etsy.getListings();
-          reply = `📦 Total ${listings.count} produk:\n\n`;
+          reply = `Total ${listings.count} produk:\n\n`;
           listings.results?.forEach((l, i) => {
             const price = typeof l.price === 'object' ? `${l.price.amount / 100} ${l.price.currency_code}` : `${l.price}`;
             reply += `${i + 1}. ${l.title} - ${price}\n`;
           });
           break;
-          
-        case 'stat':
+        }
+        case 'stat': {
           const stats = await etsy.getListingStats();
-          reply = `📊 Total aktif: ${stats.totalActive} produk`;
+          reply = `Total aktif: ${stats.totalActive} produk`;
           break;
-          
-        case 'desc':
-          const descResult = await route(
-            `Buatkan deskripsi produk Etsy yang menarik dan SEO-friendly untuk: "${parsed.message}". Deskripsi harus 200-300 kata, include keywords, call to action.`,
-            'coder'
-          );
-          reply = descResult.response;
+        }
+        case 'desc': {
+          const r = await route(`Buatkan deskripsi produk Etsy SEO-friendly untuk: "${parsed.message}". 200-300 kata.`, 'coder');
+          reply = r.response;
           break;
-          
-        case 'tags':
-          const tagsResult = await route(
-            `Buatkan 13 tags SEO untuk Etsy listing: "${parsed.message}". Format: tag1, tag2, tag3. Maks 20 karakter per tag.`,
-            'quick'
-          );
-          reply = tagsResult.response;
+        }
+        case 'tags': {
+          const r = await route(`Buatkan 13 tags SEO untuk Etsy listing: "${parsed.message}". Format: tag1, tag2. Maks 20 karakter/tag.`, 'quick');
+          reply = r.response;
           break;
-          
-        case 'reply':
-          const replyResult = await route(
-            `Buatkan balasan profesional dan ramah untuk customer Etsy: "${parsed.message}". Singkat tapi informatif.`,
-            'coder'
-          );
-          reply = replyResult.response;
+        }
+        case 'reply': {
+          const r = await route(`Buatkan balasan profesional ramah untuk customer Etsy: "${parsed.message}".`, 'coder');
+          reply = r.response;
           break;
-          
-        case 'analytics':
-          const analytics = await etsy.getReceiptsSummary();
-          reply = `📈 Analytics:\nTotal orders: ${analytics.totalOrders}\nTotal revenue: $${analytics.totalRevenue.toFixed(2)}`;
-          if (analytics.recentOrders.length > 0) {
-            reply += `\n\nRecent orders:\n`;
-            analytics.recentOrders.forEach((o, i) => {
-              reply += `${i + 1}. #${o.id} - $${o.total} (${o.status})\n`;
-            });
+        }
+        case 'analytics': {
+          const a = await etsy.getReceiptsSummary();
+          reply = `Analytics:\nTotal orders: ${a.totalOrders}\nRevenue: $${a.totalRevenue.toFixed(2)}`;
+          if (a.recentOrders.length > 0) {
+            reply += `\n\nRecent:\n`;
+            a.recentOrders.forEach((o, i) => { reply += `${i + 1}. #${o.id} - $${o.total} (${o.status})\n`; });
           }
           break;
+        }
       }
-      
+
+      addMessage(src, 'jaun', reply);
       return res.json({ ok: true, reply, agent: 'ETSY' });
     }
-    
-    // Handle AI agent commands
-    const fullMessage = JAUN_CONTEXT + "\n\nPertanyaan: " + parsed.message;
+
+    // AI agent — with shared memory context
+    const memoryCtx = buildMemoryContext(src);
+    const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: " + src + "\nPertanyaan: " + parsed.message;
     const result = await route(fullMessage, parsed.agent === 'auto' ? null : parsed.agent);
-    
-    res.json({ 
-      ok: true, 
-      reply: result.response, 
-      agent: result.agent 
+
+    addMessage(src, 'jaun', result.response);
+
+    res.json({
+      ok: true,
+      reply: result.response,
+      agent: result.agent
     });
-    
+
   } catch (error) {
     console.error('[JAUN Error]:', error.message);
-    res.json({ 
-      ok: false, 
-      reply: `Error: ${error.message}` 
+    res.json({
+      ok: false,
+      reply: `Error: ${error.message}`
     });
   }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    service: 'JAUN Manager API',
-    timestamp: new Date().toISOString() 
+// ===================== MEMORY ENDPOINTS =====================
+app.get('/memory', (req, res) => {
+  res.json({
+    conversations: Object.keys(memory.conversations).map(src => ({
+      source: src,
+      messages: memory.conversations[src].length
+    })),
+    facts: memory.facts.map(f => f.fact)
   });
 });
 
-// Status endpoint
+app.delete('/memory', (req, res) => {
+  memory.conversations = {};
+  memory.facts = [];
+  res.json({ ok: true, reply: 'Memory cleared' });
+});
+
+// Health + Status
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'JAUN Manager API',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/status', async (req, res) => {
   const ollama = require('./agents/ollama');
   const ollamaOk = await ollama.isAvailable();
-  
+  const sources = Object.keys(memory.conversations);
+
   res.json({
     ollama: ollamaOk ? 'running' : 'offline',
-    models: ['qwen2.5-coder:3b', 'qwen2.5-coder:7b'],
-    bigpickle: 'cloud',
-    etsy: 'connected'
+    bigpickle: 'openrouter',
+    etsy: 'connected',
+    memory: {
+      sources,
+      totalFacts: memory.facts.length
+    }
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🤖 JAUN Manager API berjalan di port ${PORT}`);
+  console.log(`\nJAUN Manager API running on port ${PORT}`);
   console.log(`\nEndpoints:`);
-  console.log(`  POST /jaun      - Chat dengan JAUN`);
-  console.log(`  GET  /health    - Health check`);
-  console.log(`  GET  /status    - Status system`);
-  console.log(`\nGunakan endpoint ini di Android app JAUN 78`);
+  console.log(`  POST /jaun       - Chat dengan JAUN (shared memory)`);
+  console.log(`  GET  /memory     - Lihat memory`);
+  console.log(`  DELETE /memory   - Clear memory`);
+  console.log(`  GET  /health     - Health check`);
+  console.log(`  GET  /status     - Status system`);
+  console.log(`\nSemua interface (Robot, Telegram, Laptop) share memory yang sama.`);
 });
