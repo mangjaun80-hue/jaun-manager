@@ -255,11 +255,10 @@ app.listen(PORT, () => {
   console.log(`\nSemua interface (Robot, Telegram, Laptop) share memory yang sama.`);
 });
 
-// ===================== TELEGRAM BOT (built-in) =====================
+// ===================== TELEGRAM BOT (webhook mode) =====================
 const TG_TOKEN = process.env.TG_TOKEN;
 if (TG_TOKEN) {
-  const TelegramBot = require('node-telegram-bot-api');
-  const bot = new TelegramBot(TG_TOKEN, { polling: true });
+  const WEBHOOK_PATH = '/tg/webhook';
   const MAX_LEN = 4000;
 
   function splitMsg(text) {
@@ -277,59 +276,58 @@ if (TG_TOKEN) {
     return chunks;
   }
 
+  async function tgApi(method, body) {
+    const resp = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return resp.json();
+  }
+
   async function sendReply(chatId, text) {
     if (text.length > MAX_LEN) {
       const parts = splitMsg(text);
       for (let i = 0; i < parts.length; i++) {
-        await bot.sendMessage(chatId, `Part ${i + 1}/${parts.length}:\n${parts[i]}`);
+        await tgApi('sendMessage', { chat_id: chatId, text: `Part ${i + 1}/${parts.length}:\n${parts[i]}` });
       }
     } else {
-      await bot.sendMessage(chatId, text);
+      await tgApi('sendMessage', { chat_id: chatId, text });
     }
   }
 
-  bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id,
-      `JAUN Manager\n\n` +
-      `Ketik pesan langsung atau gunakan command:\n` +
-      `/status - Status system\n` +
-      `/memory - Lihat memory\n` +
-      `/help - Bantuan`
-    );
-  });
-
-  bot.onText(/\/status/, (msg) => {
-    bot.sendMessage(msg.chat.id, 'JAUN Manager aktif. Shared memory aktif.');
-  });
-
-  bot.onText(/\/memory/, (msg) => {
-    const sources = Object.keys(memory.conversations);
-    const total = sources.reduce((a, s) => a + (memory.conversations[s]?.length || 0), 0);
-    bot.sendMessage(msg.chat.id,
-      `Memory:\nSources: ${sources.join(', ') || 'none'}\n` +
-      `Total pesan: ${total}\nFakta tersimpan: ${memory.facts.length}`
-    );
-  });
-
-  bot.onText(/\/help/, (msg) => {
-    bot.sendMessage(msg.chat.id,
-      `Bantuan:\n\n` +
-      `Ketik pesan langsung untuk ngobrol dengan JAUN.\n` +
-      `Pesan dari Telegram, Robot HP, dan Laptop share memory yang sama.\n\n` +
-      `Commands: /start /status /memory /help`
-    );
-  });
-
-  bot.on('message', async (msg) => {
-    if (msg.text?.startsWith('/')) return;
-    if (!msg.text) return;
-
+  async function handleTelegramUpdate(body) {
+    const msg = body.message;
+    if (!msg) return;
     const chatId = msg.chat.id;
-    const text = msg.text.trim();
-    const source = `telegram-${chatId}`;
+    const text = msg.text;
 
+    if (text === '/start' || text === '/help') {
+      await sendReply(chatId,
+        `JAUN Manager\n\n` +
+        `Ketik pesan langsung untuk ngobrol.\n` +
+        `Pesan dari Telegram, Robot HP, dan Laptop share memory yang sama.\n\n` +
+        `Commands: /start /status /memory /help`
+      );
+      return;
+    }
+    if (text === '/status') {
+      await sendReply(chatId, 'JAUN Manager aktif. Shared memory aktif.');
+      return;
+    }
+    if (text === '/memory') {
+      const sources = Object.keys(memory.conversations);
+      const total = sources.reduce((a, s) => a + (memory.conversations[s]?.length || 0), 0);
+      await sendReply(chatId,
+        `Memory:\nSources: ${sources.join(', ') || 'none'}\n` +
+        `Total pesan: ${total}\nFakta tersimpan: ${memory.facts.length}`
+      );
+      return;
+    }
+    if (!text || text.startsWith('/')) return;
+
+    const source = `telegram-${chatId}`;
     try {
-      // Panggil internal route dengan shared memory
       addMessage(source, 'user', text);
       const parsed = parseCommand(text);
 
@@ -354,15 +352,27 @@ if (TG_TOKEN) {
       await sendReply(chatId, result.response);
     } catch (error) {
       console.error('[TG Error]:', error.message);
-      await bot.sendMessage(chatId, `Error: ${error.message}`);
+      await sendReply(chatId, `Error: ${error.message}`);
     }
+  }
+
+  app.post(WEBHOOK_PATH, express.json(), (req, res) => {
+    res.sendStatus(200);
+    handleTelegramUpdate(req.body).catch(e => console.error('[TG Hook Error]:', e.message));
   });
 
-  bot.on('polling_error', (error) => {
-    console.error('[TG Polling Error]:', error.code);
-  });
+  async function setupWebhook() {
+    try {
+      const publicUrl = `https://jaun-api-production.up.railway.app${WEBHOOK_PATH}`;
+      const data = await tgApi('setWebhook', { url: publicUrl, drop_pending_updates: true });
+      console.log(`Telegram Webhook: ${data.ok ? 'OK' : 'FAILED'} - ${data.description || ''}`);
+    } catch (e) {
+      console.error('[TG Webhook Setup Error]:', e.message);
+    }
+  }
 
-  console.log('Telegram Bot aktif (shared memory).');
+  setupWebhook();
+  console.log('Telegram Bot aktif via Webhook (shared memory).');
 } else {
   console.log('TG_TOKEN tidak diset, Telegram Bot dimatikan.');
 }
