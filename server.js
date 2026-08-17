@@ -254,3 +254,115 @@ app.listen(PORT, () => {
   console.log(`  GET  /status     - Status system`);
   console.log(`\nSemua interface (Robot, Telegram, Laptop) share memory yang sama.`);
 });
+
+// ===================== TELEGRAM BOT (built-in) =====================
+const TG_TOKEN = process.env.TG_TOKEN;
+if (TG_TOKEN) {
+  const TelegramBot = require('node-telegram-bot-api');
+  const bot = new TelegramBot(TG_TOKEN, { polling: true });
+  const MAX_LEN = 4000;
+
+  function splitMsg(text) {
+    const chunks = [];
+    let start = 0;
+    while (start < text.length) {
+      let end = Math.min(start + MAX_LEN, text.length);
+      if (end < text.length) {
+        const nl = text.lastIndexOf('\n', end);
+        if (nl > start) end = nl;
+      }
+      chunks.push(text.slice(start, end));
+      start = end;
+    }
+    return chunks;
+  }
+
+  async function sendReply(chatId, text) {
+    if (text.length > MAX_LEN) {
+      const parts = splitMsg(text);
+      for (let i = 0; i < parts.length; i++) {
+        await bot.sendMessage(chatId, `Part ${i + 1}/${parts.length}:\n${parts[i]}`);
+      }
+    } else {
+      await bot.sendMessage(chatId, text);
+    }
+  }
+
+  bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id,
+      `JAUN Manager\n\n` +
+      `Ketik pesan langsung atau gunakan command:\n` +
+      `/status - Status system\n` +
+      `/memory - Lihat memory\n` +
+      `/help - Bantuan`
+    );
+  });
+
+  bot.onText(/\/status/, (msg) => {
+    bot.sendMessage(msg.chat.id, 'JAUN Manager aktif. Shared memory aktif.');
+  });
+
+  bot.onText(/\/memory/, (msg) => {
+    const sources = Object.keys(memory.conversations);
+    const total = sources.reduce((a, s) => a + (memory.conversations[s]?.length || 0), 0);
+    bot.sendMessage(msg.chat.id,
+      `Memory:\nSources: ${sources.join(', ') || 'none'}\n` +
+      `Total pesan: ${total}\nFakta tersimpan: ${memory.facts.length}`
+    );
+  });
+
+  bot.onText(/\/help/, (msg) => {
+    bot.sendMessage(msg.chat.id,
+      `Bantuan:\n\n` +
+      `Ketik pesan langsung untuk ngobrol dengan JAUN.\n` +
+      `Pesan dari Telegram, Robot HP, dan Laptop share memory yang sama.\n\n` +
+      `Commands: /start /status /memory /help`
+    );
+  });
+
+  bot.on('message', async (msg) => {
+    if (msg.text?.startsWith('/')) return;
+    if (!msg.text) return;
+
+    const chatId = msg.chat.id;
+    const text = msg.text.trim();
+    const source = `telegram-${chatId}`;
+
+    try {
+      // Panggil internal route dengan shared memory
+      addMessage(source, 'user', text);
+      const parsed = parseCommand(text);
+
+      if (parsed.fact) {
+        addFact(parsed.fact);
+        addMessage(source, 'jaun', `Oke, aku inget: "${parsed.fact}"`);
+        await sendReply(chatId, `Oke Boss, aku simpen: "${parsed.fact}"`);
+        return;
+      }
+      if (parsed.unfact) {
+        memory.facts = memory.facts.filter(f => !f.fact.toLowerCase().includes(parsed.unfact.toLowerCase()));
+        addMessage(source, 'jaun', `Oke, aku lupa: "${parsed.unfact}"`);
+        await sendReply(chatId, `Oke Boss, aku lupa tentang: "${parsed.unfact}"`);
+        return;
+      }
+
+      const memoryCtx = buildMemoryContext(source);
+      const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: telegram\nPertanyaan: " + parsed.message;
+      const result = await route(fullMessage, parsed.agent === 'auto' ? null : parsed.agent);
+
+      addMessage(source, 'jaun', result.response);
+      await sendReply(chatId, result.response);
+    } catch (error) {
+      console.error('[TG Error]:', error.message);
+      await bot.sendMessage(chatId, `Error: ${error.message}`);
+    }
+  });
+
+  bot.on('polling_error', (error) => {
+    console.error('[TG Polling Error]:', error.code);
+  });
+
+  console.log('Telegram Bot aktif (shared memory).');
+} else {
+  console.log('TG_TOKEN tidak diset, Telegram Bot dimatikan.');
+}
