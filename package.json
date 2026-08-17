@@ -1,0 +1,24 @@
+{
+  "name": "jaun-manager",
+  "version": "1.0.0",
+  "description": "JAUN Manager - AI Team untuk coding, debugging, review & Etsy store management",
+  "main": "jaun.js",
+  "scripts": {
+    "start": "node server.js",
+    "bot": "node bot.js",
+    "cli": "node jaun.js",
+    "server": "node server.js",
+    "dev": "node --watch server.js",
+    "dev:bot": "node --watch bot.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "node-telegram-bot-api": "^0.66.0",
+    "openai": "^4.77.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
