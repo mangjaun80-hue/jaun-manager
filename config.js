@@ -10,9 +10,9 @@ const config = {
     }
   },
   bigpickle: {
-    apiKey: process.env.BIGONE_KEY || process.env.TEAM_KEY || '',
-    baseUrl: 'https://opencode.ai/zen/v1',
-    model: process.env.OPENCODE_MODEL || 'big-pickle'
+    apiKey: process.env.API_KEYS || '',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: process.env.OPENCODE_MODEL || 'deepseek/deepseek-chat-v3-0324:free'
   },
   etsy: {
     keystring: process.env.ETSY_KEYSTRING || '',
