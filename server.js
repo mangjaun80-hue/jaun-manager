@@ -232,9 +232,12 @@ app.post('/jaun', async (req, res) => {
 
   } catch (error) {
     console.error('[JAUN Error]:', error.message);
+    const friendly = /429|rate limit|rate_limit|too many/i.test(String(error.message))
+      ? 'Waduh, kuota AI lagi penuh. Tunggu bentar lalu coba lagi ya Boss.'
+      : `Error: ${error.message}`;
     res.json({
       ok: false,
-      reply: `Error: ${error.message}`
+      reply: friendly
     });
   }
 });
@@ -526,7 +529,10 @@ if (TG_TOKEN) {
       await sendReply(chatId, result.response);
     } catch (error) {
       console.error('[TG Error]:', error.message);
-      await sendReply(chatId, `Error: ${error.message}`);
+      const friendly = /429|rate limit|rate_limit|too many/i.test(String(error.message))
+        ? 'Waduh, kuota AI lagi penuh. Tunggu bentar lalu coba lagi ya Boss.'
+        : `Error: ${error.message}`;
+      await sendReply(chatId, friendly);
     }
   }
 
