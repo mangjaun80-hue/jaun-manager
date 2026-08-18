@@ -317,6 +317,23 @@ app.post('/jaun-poll', (req, res) => {
   res.json({ messages: pending.map(m => ({ text: m.text })) });
 });
 
+// Laptop/HP minta URL download file Telegram (tanpa ekspos token)
+app.post('/tg-getfile', async (req, res) => {
+  try {
+    const { file_id } = req.body || {};
+    if (!file_id) return res.json({ ok: false, reply: 'file_id kosong' });
+    const data = await tgApi('getFile', { file_id });
+    if (!data.ok) return res.json({ ok: false, reply: data.description || 'Gagal dapat file' });
+    res.json({
+      ok: true,
+      url: `https://api.telegram.org/file/bot${TG_TOKEN}/${data.result.file_path}`,
+      file_path: data.result.file_path
+    });
+  } catch (e) {
+    res.json({ ok: false, reply: e.message });
+  }
+});
+
 // Debug: lihat isi antrian bridge
 app.get('/jaun-status', (req, res) => {
   res.json({
@@ -429,6 +446,22 @@ if (TG_TOKEN) {
     if (!msg) return;
     const chatId = msg.chat.id;
     const text = msg.text;
+
+    // File/document dari Telegram (mis. APK) -> simpan notifikasi untuk laptop
+    if (msg.document) {
+      const doc = msg.document;
+      const fileName = doc.file_name || `file_${Date.now()}`;
+      const caption = (msg.caption || '').trim();
+      console.log(`[TG FILE] "${fileName}" (${doc.file_size} bytes) dari chat ${chatId}`);
+      // Beri tahu laptop lewat antrian hasil eksekusi
+      bridge.toRobot.push({
+        text: `📦 FILE TERIMA dari Telegram: "${fileName}" (${(doc.file_size / 1024 / 1024).toFixed(1)} MB). file_id=${doc.file_id}. caption: ${caption || '(tanpa caption)'}`,
+        ts: Date.now(),
+        delivered: false
+      });
+      await sendReply(chatId, `Oke Boss, aku terima file "${fileName}". Laptop segera menariknya.`);
+      return;
+    }
 
     if (text === '/start' || text === '/help') {
       await sendReply(chatId,
