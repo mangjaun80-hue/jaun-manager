@@ -130,13 +130,17 @@ app.post('/jaun', async (req, res) => {
     addMessage(src, 'user', message);
     const parsed = parseCommand(message);
 
-    // Konfirmasi dari HP (source robot): "gas bro" dsb -> AI server langsung eksekusi
+    // Konfirmasi dari HP (source robot): "gas bro" dsb -> kirim EXECUTE: ke laptop
     if (src === 'robot' && bridge.pending && !bridge.pending.confirmed && isConfirmation(message)) {
       bridge.pending.confirmed = true;
       const cmd = bridge.pending.command;
-      console.log(`[BRIDGE] Konfirmasi diterima dari HP, AI eksekusi: "${cmd}"`);
-      const result = await executeCommand(cmd);
-      return res.json({ ok: true, reply: result, agent: 'JAUN' });
+      bridge.toLaptop.push({ text: `EXECUTE:${cmd}`, ts: Date.now(), delivered: false });
+      console.log(`[BRIDGE] Konfirmasi diterima dari HP. Laptop eksekusi: "${cmd}"`);
+      return res.json({
+        ok: true,
+        reply: `Oke Boss, konfirmasi diterima. Laptop segera eksekusi: "${cmd}". Hasil menyusul lewat polling.`,
+        agent: 'JAUN'
+      });
     }
 
     // Fact commands
