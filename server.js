@@ -401,6 +401,47 @@ app.get('/status', async (req, res) => {
   });
 });
 
+// ── JAUN DEV OS Proxy ──────────────────────────────────────────────
+const DEV_OS_URL = process.env.JAUN_DEV_OS_URL || 'http://127.0.0.1:8787';
+
+app.all('/dev/*', async (req, res) => {
+  try {
+    const http = require('http');
+    const url = new URL(req.url, DEV_OS_URL);
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: req.method,
+      headers: { ...req.headers, host: url.host },
+      timeout: 30000
+    };
+    const proxy = http.request(options, (upstream) => {
+      res.writeHead(upstream.statusCode, upstream.headers);
+      upstream.pipe(res);
+    });
+    proxy.on('error', () => res.status(502).json({ error: 'JAUN DEV OS unreachable', url: DEV_OS_URL }));
+    proxy.on('timeout', () => { proxy.destroy(); res.status(504).json({ error: 'JAUN DEV OS timeout' }); });
+    req.pipe(proxy);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/dev/health', async (req, res) => {
+  try {
+    const http = require('http');
+    const r = await new Promise((resolve, reject) => {
+      http.get(`${DEV_OS_URL}/api/health`, { timeout: 5000 }, (up) => {
+        let d = ''; up.on('data', c => d += c); up.on('end', () => resolve(JSON.parse(d)));
+      }).on('error', reject);
+    });
+    res.json({ dev_os: 'online', ...r });
+  } catch (e) {
+    res.json({ dev_os: 'offline', error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\nJAUN Manager API running on port ${PORT}`);
   console.log(`\nEndpoints:`);
@@ -501,7 +542,7 @@ if (TG_TOKEN) {
         `JAUN Manager\n\n` +
         `Ketik pesan langsung untuk ngobrol.\n` +
         `Pesan dari Telegram, Robot HP, dan Laptop share memory yang sama.\n\n` +
-        `Commands: /start /status /memory /help`
+        `Commands: /start /status /memory /dev /help`
       );
       return;
     }
@@ -516,6 +557,59 @@ if (TG_TOKEN) {
         `Memory:\nSources: ${sources.join(', ') || 'none'}\n` +
         `Total pesan: ${total}\nFakta tersimpan: ${memory.facts.length}`
       );
+      return;
+    }
+    if (text.startsWith('/dev')) {
+      try {
+        const http = require('http');
+        const devGet = (path) => new Promise((resolve, reject) => {
+          http.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
+            let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
+          }).on('error', reject);
+        });
+        const devPost = (path, body) => new Promise((resolve, reject) => {
+          const data = JSON.stringify(body);
+          const u = new URL(path, DEV_OS_URL);
+          const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, timeout: 120000
+          }, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
+          req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); }); req.write(data); req.end();
+        });
+
+        const parts = text.trim().split(/\s+/);
+        const sub = (parts[1] || '').toLowerCase();
+
+        if (sub === 'status') {
+          const h = await devGet('/api/health');
+          const models = (h.models || []).join(', ') || 'none';
+          await sendReply(chatId, `JAUN DEV OS\nOllama: ${h.ollama ? 'ON' : 'OFF'}\nModels: ${models}\nCPU: ${h.cpu}% | RAM: ${h.ram}% | Disk: ${h.disk}%\nAutonomy: ${h.autonomy}`);
+          return;
+        }
+        if (sub === 'autonomy') {
+          const level = parseInt(parts[2]) || 2;
+          const r = await devPost('/api/autonomy', { level });
+          await sendReply(chatId, `Autonomy set to: ${r.autonomy_level || level}`);
+          return;
+        }
+        if (sub === 'mission') {
+          const goal = parts.slice(2).join(' ').trim();
+          if (!goal) { await sendReply(chatId, 'Usage: /dev mission <goal>'); return; }
+          await sendReply(chatId, `Mission received: "${goal}"\nRunning scientific loop...`);
+          const r = await devPost('/api/mission', { goal });
+          const summary = r.summary || r.status || JSON.stringify(r).slice(0, 800);
+          const files = (r.changed_files || []).map(f => f.path).join(', ') || 'none';
+          await sendReply(chatId, `Mission ${r.status || 'done'}\n${summary}\nFiles changed: ${files}\nDuration: ${r.duration_ms || 0}ms\nConfidence: ${((r.confidence || 0) * 100).toFixed(0)}%`);
+          return;
+        }
+        if (sub === 'health') {
+          const h = await devGet('/api/health');
+          await sendReply(chatId, JSON.stringify(h, null, 2));
+          return;
+        }
+        await sendReply(chatId, `JAUN DEV OS Commands:\n/dev status — status server\n/dev autonomy <1-5> — set level\n/dev mission <goal> — jalankan loop\n/dev health — raw health JSON`);
+      } catch (e) {
+        await sendReply(chatId, `DEV OS error: ${e.message}`);
+      }
       return;
     }
     if (!text || text.startsWith('/')) return;
