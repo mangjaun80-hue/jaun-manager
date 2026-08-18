@@ -317,23 +317,6 @@ app.post('/jaun-poll', (req, res) => {
   res.json({ messages: pending.map(m => ({ text: m.text })) });
 });
 
-// Laptop/HP minta URL download file Telegram (tanpa ekspos token)
-app.post('/tg-getfile', async (req, res) => {
-  try {
-    const { file_id } = req.body || {};
-    if (!file_id) return res.json({ ok: false, reply: 'file_id kosong' });
-    const data = await tgApi('getFile', { file_id });
-    if (!data.ok) return res.json({ ok: false, reply: data.description || 'Gagal dapat file' });
-    res.json({
-      ok: true,
-      url: `https://api.telegram.org/file/bot${TG_TOKEN}/${data.result.file_path}`,
-      file_path: data.result.file_path
-    });
-  } catch (e) {
-    res.json({ ok: false, reply: e.message });
-  }
-});
-
 // Debug: lihat isi antrian bridge
 app.get('/jaun-status', (req, res) => {
   res.json({
@@ -429,6 +412,23 @@ if (TG_TOKEN) {
     });
     return resp.json();
   }
+
+  // Laptop/HP minta URL download file Telegram (tanpa ekspos token)
+  app.post('/tg-getfile', async (req, res) => {
+    try {
+      const { file_id } = req.body || {};
+      if (!file_id) return res.json({ ok: false, reply: 'file_id kosong' });
+      const data = await tgApi('getFile', { file_id });
+      if (!data.ok) return res.json({ ok: false, reply: data.description || 'Gagal dapat file' });
+      res.json({
+        ok: true,
+        url: `https://api.telegram.org/file/bot${TG_TOKEN}/${data.result.file_path}`,
+        file_path: data.result.file_path
+      });
+    } catch (e) {
+      res.json({ ok: false, reply: e.message });
+    }
+  });
 
   async function sendReply(chatId, text) {
     if (text.length > MAX_LEN) {
