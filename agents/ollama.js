@@ -131,26 +131,67 @@ async function chatStream(model, messages, onChunk, options = {}) {
     }
   }
 
-  // Fallback to Big Pickle
-  console.log(`[Big Pickle Stream] Using cloud for: ${model}`);
+  // Coba worker lokal (laptop) dulu — gratis & tanpa kuota
+  try {
+    const aiWorker = require('../aiWorker');
+    if (aiWorker.isWorkerActive()) {
+      console.log(`[Worker Stream] Minta laptop menjawab via Ollama lokal: ${model}`);
+      const ans = await aiWorker.requestAnswer(model, messages, options);
+      if (ans !== null && ans !== undefined) {
+        console.log(`[Worker Stream] Jawaban diterima dari laptop.`);
+        if (onChunk) onChunk(ans);
+        return ans;
+      }
+      console.log(`[Worker Stream] Laptop tidak menjawab tepat waktu, fallback ke cloud.`);
+    } else {
+      console.log(`[Worker Stream] Worker tidak aktif (laptop mati?), fallback ke cloud.`);
+    }
+  } catch (error) {
+    console.error(`[Worker Stream Error]:`, error.message);
+  }
+
+  // Fallback to Big Pickle (OpenRouter) with rate-limit retry + backoff
   const client = createBigPickleClient();
-  const stream = await client.chat.completions.create({
-    model: config.bigpickle.model,
-    messages,
-    stream: true,
-    temperature: options.temperature || 0.7,
-    max_tokens: options.maxTokens || 4096
-  });
-  
-  let fullResponse = '';
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content || '';
-    if (content) {
-      fullResponse += content;
-      if (onChunk) onChunk(content);
+  const maxRetries = options.maxRetries || 3;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Big Pickle Stream] Using cloud for: ${model} (attempt ${attempt}/${maxRetries})`);
+      const stream = await client.chat.completions.create({
+        model: config.bigpickle.model,
+        messages,
+        stream: true,
+        temperature: options.temperature || 0.7,
+        max_tokens: options.maxTokens || 4096
+      });
+      let fullResponse = '';
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) {
+          fullResponse += content;
+          if (onChunk) onChunk(content);
+        }
+      }
+      return fullResponse;
+    } catch (error) {
+      lastErr = error;
+      const isRateLimit = /429|rate limit|rate_limit|too many/i.test(String(error.message));
+      console.log(`[Big Pickle Stream Error] ${error.message}`);
+      if (isRateLimit && attempt < maxRetries) {
+        const waitMs = options.retryDelayMs || 6000 * Math.pow(2, attempt - 1);
+        console.log(`[Big Pickle Stream] Rate limited. Retry in ${waitMs}ms...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      break;
     }
   }
-  return fullResponse;
+  if (lastErr && /429|rate limit|rate_limit|too many/i.test(String(lastErr.message))) {
+    const msg = 'Maaf Boss, kuota AI lagi kepake penuh. Tunggu beberapa menit, lalu coba lagi ya.';
+    if (onChunk) onChunk(msg);
+    return msg;
+  }
+  throw lastErr || new Error('Big Pickle gagal');
 }
 
 module.exports = { chat, chatStream, isAvailable };
