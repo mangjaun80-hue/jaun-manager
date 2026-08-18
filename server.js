@@ -213,6 +213,52 @@ app.post('/jaun', async (req, res) => {
   }
 });
 
+// ===================== BIGONE BRIDGE (Robot/HP <-> Laptop) =====================
+// Alur:
+//   Robot -> /jaun-bridge (POST)  : kirim perintah ke laptop
+//   Laptop -> /jaun-bridge (GET)   : tarik perintah dari robot
+//   Laptop -> /jaun-reply (POST)   : kirim balasan ke robot
+//   Robot  -> /jaun-poll  (POST)   : tarik balasan dari laptop
+const bridge = {
+  toLaptop: [],   // {text, ts, delivered}
+  toRobot: []     // {text, ts, delivered}
+};
+
+// Robot/HP kirim perintah ke laptop
+app.post('/jaun-bridge', (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) {
+    return res.json({ ok: false, reply: 'Pesan kosong' });
+  }
+  bridge.toLaptop.push({ text: message.trim(), ts: Date.now(), delivered: false });
+  addMessage('robot', 'user', `/bigone ${message.trim()}`);
+  res.json({ ok: true, reply: 'Perintah terkirim ke laptop (BIGONE). Balasan menyusul via polling.' });
+});
+
+// Laptop kirim balasan ke robot
+app.post('/jaun-reply', (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) {
+    return res.json({ ok: false, reply: 'Pesan kosong' });
+  }
+  bridge.toRobot.push({ text: message.trim(), ts: Date.now(), delivered: false });
+  res.json({ ok: true, reply: 'Balasan terkirim ke robot (HP).' });
+});
+
+// Laptop tarik perintah dari robot (konsumsi setelah diambil)
+app.get('/jaun-bridge', (req, res) => {
+  const pending = bridge.toLaptop.filter(m => !m.delivered);
+  pending.forEach(m => { m.delivered = true; });
+  res.json({ messages: pending.map(m => ({ text: m.text })) });
+});
+
+// Robot tarik balasan dari laptop (konsumsi setelah diambil)
+app.post('/jaun-poll', (req, res) => {
+  const pending = bridge.toRobot.filter(m => !m.delivered);
+  pending.forEach(m => { m.delivered = true; });
+  res.json({ messages: pending.map(m => ({ text: m.text })) });
+});
+
 // ===================== MEMORY ENDPOINTS =====================
 app.get('/memory', (req, res) => {
   res.json({
@@ -259,6 +305,10 @@ app.listen(PORT, () => {
   console.log(`\nJAUN Manager API running on port ${PORT}`);
   console.log(`\nEndpoints:`);
   console.log(`  POST /jaun       - Chat dengan JAUN (shared memory)`);
+  console.log(`  POST /jaun-bridge - Robot kirim perintah ke laptop`);
+  console.log(`  GET  /jaun-bridge - Laptop tarik perintah dari robot`);
+  console.log(`  POST /jaun-reply  - Laptop kirim balasan ke robot`);
+  console.log(`  POST /jaun-poll   - Robot tarik balasan dari laptop`);
   console.log(`  GET  /memory     - Lihat memory`);
   console.log(`  DELETE /memory   - Clear memory`);
   console.log(`  GET  /health     - Health check`);
