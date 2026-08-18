@@ -403,39 +403,38 @@ app.get('/status', async (req, res) => {
 
 // ── JAUN DEV OS Proxy ──────────────────────────────────────────────
 const DEV_OS_URL = process.env.JAUN_DEV_OS_URL || 'http://127.0.0.1:8787';
+const http = require('http');
 
-app.all('/dev/*', async (req, res) => {
-  try {
-    const http = require('http');
-    const url = new URL(req.url, DEV_OS_URL);
-    const options = {
-      hostname: url.hostname,
-      port: url.port,
-      path: url.pathname + url.search,
-      method: req.method,
-      headers: { ...req.headers, host: url.host },
-      timeout: 30000
-    };
-    const proxy = http.request(options, (upstream) => {
-      res.writeHead(upstream.statusCode, upstream.headers);
-      upstream.pipe(res);
+function devGet(path) {
+  return new Promise((resolve, reject) => {
+    http.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
+    }).on('error', reject);
+  });
+}
+
+function devPost(path, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const u = new URL(path, DEV_OS_URL);
+    const req = http.request({
+      hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      timeout: 120000
+    }, (r) => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
     });
-    proxy.on('error', () => res.status(502).json({ error: 'JAUN DEV OS unreachable', url: DEV_OS_URL }));
-    proxy.on('timeout', () => { proxy.destroy(); res.status(504).json({ error: 'JAUN DEV OS timeout' }); });
-    req.pipe(proxy);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(data); req.end();
+  });
+}
 
 app.get('/dev/health', async (req, res) => {
   try {
-    const http = require('http');
-    const r = await new Promise((resolve, reject) => {
-      http.get(`${DEV_OS_URL}/api/health`, { timeout: 5000 }, (up) => {
-        let d = ''; up.on('data', c => d += c); up.on('end', () => resolve(JSON.parse(d)));
-      }).on('error', reject);
-    });
+    const r = await devGet('/api/health');
     res.json({ dev_os: 'online', ...r });
   } catch (e) {
     res.json({ dev_os: 'offline', error: e.message });
@@ -561,21 +560,6 @@ if (TG_TOKEN) {
     }
     if (text.startsWith('/dev')) {
       try {
-        const http = require('http');
-        const devGet = (path) => new Promise((resolve, reject) => {
-          http.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
-            let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
-          }).on('error', reject);
-        });
-        const devPost = (path, body) => new Promise((resolve, reject) => {
-          const data = JSON.stringify(body);
-          const u = new URL(path, DEV_OS_URL);
-          const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, timeout: 120000
-          }, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
-          req.on('error', reject); req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); }); req.write(data); req.end();
-        });
-
         const parts = text.trim().split(/\s+/);
         const sub = (parts[1] || '').toLowerCase();
 
