@@ -222,12 +222,17 @@ app.post('/jaun', async (req, res) => {
   }
 });
 
-// ===================== BIGONE BRIDGE (Robot/HP -> AI) =====================
-// Alur (semua ditangani AI di server, APLIKASI DESKTOP TIDAK DILIBATKAN):
-//   HP:  /bigone <perintah>  -> server AI: "Siap laksanakan: X. Kirim 'gas bro'"
-//   HP:  "gas bro"           -> server AI: eksekusi perintah -> balas hasil ke HP
+// ===================== BIGONE BRIDGE (Robot/HP <-> Laptop executor) =====================
+// Alur:
+//   HP:  /bigone <perintah>          -> server AI: "Siap laksanakan: X. Kirim 'gas bro'"
+//   HP:  "gas bro" (chat biasa/... ) -> server: kirim EXECUTE:<perintah> ke antrian laptop
+//   Laptop: polling                  -> terima EXECUTE -> eksekusi FISIK di laptop
+//   Laptop: /jaun-reply {message}    -> kirim hasil ke HP
+//   HP:  /jaun-poll                  -> terima hasil dari laptop
 const bridge = {
-  pending: null   // {command, confirmed} - perintah terakhir dari HP yang menunggu konfirmasi
+  pending: null,        // {command, confirmed} - perintah dari HP yang menunggu konfirmasi
+  toLaptop: [],         // {text, ts, delivered} - EXECUTE:<perintah> untuk laptop
+  toRobot: []           // {text, ts, delivered} - hasil eksekusi untuk HP
 };
 
 const CONFIRM_WORDS = ['gas', 'gas bro', 'gaskeun', 'lanjut', 'lanjutkan', 'sip', 'oke', 'ok', 'ya', 'yes', 'iya', 'eksekusi', 'jalankan', 'laksanakan', 'siap', 'go', 'gas bang'];
@@ -238,35 +243,38 @@ function isConfirmation(text) {
   return CONFIRM_WORDS.some(w => t === w || t.startsWith(w + ' ') || t.startsWith(w + ',')) || /gas/i.test(t);
 }
 
-// Eksekusi perintah oleh AI (server), lalu simpan ke memory robot
-async function executeCommand(cmd) {
-  const memoryCtx = buildMemoryContext('robot');
-  const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: robot\nPerintah yang dikonfirmasi: " + cmd;
-  const result = await route(cmd, null, fullMessage);
-  addMessage('robot', 'jaun', result.response);
-  return result.response;
+// Jatuh tempo konfirmasi (60 detik): kalau tak dikonfirmasi, pending dibersihkan
+function clearStalePending() {
+  if (bridge.pending && Date.now() - bridge.pending.ts > 60000) {
+    bridge.pending = null;
+  }
 }
 
-// HP kirim perintah -> AI jawab minta konfirmasi
-app.post('/jaun-bridge', async (req, res) => {
+// ===== HP -> Laptop =====
+app.post('/jaun-bridge', (req, res) => {
   try {
     const { message } = req.body;
     if (!message || !message.trim()) {
       return res.json({ ok: false, reply: 'Pesan kosong' });
     }
     const text = message.trim();
+    clearStalePending();
 
-    // Jika ada pending yang belum dikonfirmasi dan pesan ini kata konfirmasi -> eksekusi
+    // Konfirmasi: jika ada pending belum dikonfirmasi dan pesan ini kata konfirmasi
     if (bridge.pending && !bridge.pending.confirmed && isConfirmation(text)) {
       bridge.pending.confirmed = true;
       const cmd = bridge.pending.command;
-      console.log(`[BRIDGE] Konfirmasi diterima dari HP, AI eksekusi: "${cmd}"`);
-      const result = await executeCommand(cmd);
-      return res.json({ ok: true, reply: result, agent: 'JAUN' });
+      bridge.toLaptop.push({ text: `EXECUTE:${cmd}`, ts: Date.now(), delivered: false });
+      console.log(`[BRIDGE] Konfirmasi diterima dari HP. Laptop eksekusi: "${cmd}"`);
+      return res.json({
+        ok: true,
+        reply: `Oke Boss, konfirmasi diterima. Laptop segera eksekusi: "${cmd}". Hasil menyusul lewat polling.`,
+        agent: 'JAUN'
+      });
     }
 
     // Perintah baru -> simpan pending, minta konfirmasi
-    bridge.pending = { command: text, confirmed: false };
+    bridge.pending = { command: text, confirmed: false, ts: Date.now() };
     addMessage('robot', 'user', `/bigone ${text}`);
     console.log(`[BRIDGE] Perintah baru dari HP: "${text}"`);
     res.json({
@@ -280,12 +288,29 @@ app.post('/jaun-bridge', async (req, res) => {
   }
 });
 
-// Endpoint lama dipertahankan agar tidak error (tak lagi dipakai untuk alur utama)
+// ===== Laptop -> HP (hasil eksekusi) =====
 app.post('/jaun-reply', (req, res) => {
-  res.json({ ok: true, reply: 'Alur baru: konfirmasi & eksekusi ditangani AI server.' });
+  const { message } = req.body;
+  if (!message || !message.trim()) {
+    return res.json({ ok: false, reply: 'Pesan kosong' });
+  }
+  bridge.toRobot.push({ text: message.trim(), ts: Date.now(), delivered: false });
+  console.log(`[BRIDGE] Hasil dari laptop -> HP: "${message.substring(0, 80)}..."`);
+  res.json({ ok: true, reply: 'Hasil terkirim ke HP.' });
 });
+
+// ===== Laptop polling: tarik EXECUTE =====
 app.get('/jaun-bridge', (req, res) => {
-  res.json({ messages: [] });
+  const pending = bridge.toLaptop.filter(m => !m.delivered);
+  pending.forEach(m => { m.delivered = true; });
+  res.json({ messages: pending.map(m => ({ text: m.text })) });
+});
+
+// ===== HP polling: tarik hasil dari laptop =====
+app.post('/jaun-poll', (req, res) => {
+  const pending = bridge.toRobot.filter(m => !m.delivered);
+  pending.forEach(m => { m.delivered = true; });
+  res.json({ messages: pending.map(m => ({ text: m.text })) });
 });
 app.post('/jaun-poll', (req, res) => {
   res.json({ messages: [] });
