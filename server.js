@@ -130,13 +130,13 @@ app.post('/jaun', async (req, res) => {
     addMessage(src, 'user', message);
     const parsed = parseCommand(message);
 
-    // Konfirmasi dari HP (source robot): "gas bro" dsb -> kirim CONFIRM: ke laptop
+    // Konfirmasi dari HP (source robot): "gas bro" dsb -> AI server langsung eksekusi
     if (src === 'robot' && bridge.pending && !bridge.pending.confirmed && isConfirmation(message)) {
       bridge.pending.confirmed = true;
       const cmd = bridge.pending.command;
-      bridge.toLaptop.push({ text: `CONFIRM:${cmd}`, ts: Date.now(), delivered: false });
-      console.log(`[BRIDGE] Konfirmasi diterima dari HP, laptop eksekusi: "${cmd}"`);
-      return res.json({ ok: true, reply: `Oke Boss, konfirmasi diterima. Laptop segera eksekusi: "${cmd}"`, agent: 'JAUN' });
+      console.log(`[BRIDGE] Konfirmasi diterima dari HP, AI eksekusi: "${cmd}"`);
+      const result = await executeCommand(cmd);
+      return res.json({ ok: true, reply: result, agent: 'JAUN' });
     }
 
     // Fact commands
@@ -222,15 +222,11 @@ app.post('/jaun', async (req, res) => {
   }
 });
 
-// ===================== BIGONE BRIDGE (Robot/HP <-> Laptop) =====================
-// Alur dengan KONFIRMASI:
-//   HP:  /bigone <perintah>          -> server simpan pending, kirim ke laptop
-//   Laptop: tarik perintah           -> balas "Siap laksanakan ... gas bro?"
-//   HP:  "gas bro" (chat biasa/... ) -> server terima konfirmasi -> kirim CONFIRM: ke laptop
-//   Laptop: eksekusi                 -> balas hasil ke HP
+// ===================== BIGONE BRIDGE (Robot/HP -> AI) =====================
+// Alur (semua ditangani AI di server, APLIKASI DESKTOP TIDAK DILIBATKAN):
+//   HP:  /bigone <perintah>  -> server AI: "Siap laksanakan: X. Kirim 'gas bro'"
+//   HP:  "gas bro"           -> server AI: eksekusi perintah -> balas hasil ke HP
 const bridge = {
-  toLaptop: [],   // {text, ts, delivered}
-  toRobot: [],    // {text, ts, delivered}
   pending: null   // {command, confirmed} - perintah terakhir dari HP yang menunggu konfirmasi
 };
 
@@ -242,52 +238,57 @@ function isConfirmation(text) {
   return CONFIRM_WORDS.some(w => t === w || t.startsWith(w + ' ') || t.startsWith(w + ',')) || /gas/i.test(t);
 }
 
-// HP kirim perintah ke laptop (dengan alur konfirmasi)
-app.post('/jaun-bridge', (req, res) => {
-  const { message } = req.body;
-  if (!message || !message.trim()) {
-    return res.json({ ok: false, reply: 'Pesan kosong' });
-  }
-  const text = message.trim();
+// Eksekusi perintah oleh AI (server), lalu simpan ke memory robot
+async function executeCommand(cmd) {
+  const memoryCtx = buildMemoryContext('robot');
+  const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: robot\nPerintah yang dikonfirmasi: " + cmd;
+  const result = await route(cmd, null, fullMessage);
+  addMessage('robot', 'jaun', result.response);
+  return result.response;
+}
 
-  // Jika ada perintah pending yang belum dikonfirmasi dan pesan ini kata konfirmasi
-  if (bridge.pending && !bridge.pending.confirmed && isConfirmation(text)) {
-    bridge.pending.confirmed = true;
-    const cmd = bridge.pending.command;
-    bridge.toLaptop.push({ text: `CONFIRM:${cmd}`, ts: Date.now(), delivered: false });
-    addMessage('robot', 'user', `/bigone (konfirmasi) ${cmd}`);
-    return res.json({ ok: true, reply: `Oke Boss, konfirmasi diterima. Laptop segera eksekusi: "${cmd}"` });
-  }
+// HP kirim perintah -> AI jawab minta konfirmasi
+app.post('/jaun-bridge', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.json({ ok: false, reply: 'Pesan kosong' });
+    }
+    const text = message.trim();
 
-  // Perintah baru -> simpan sebagai pending
-  bridge.pending = { command: text, confirmed: false };
-  bridge.toLaptop.push({ text, ts: Date.now(), delivered: false });
-  addMessage('robot', 'user', `/bigone ${text}`);
-  res.json({ ok: true, reply: 'Perintah terkirim ke laptop. Laptop akan minta konfirmasi.' });
+    // Jika ada pending yang belum dikonfirmasi dan pesan ini kata konfirmasi -> eksekusi
+    if (bridge.pending && !bridge.pending.confirmed && isConfirmation(text)) {
+      bridge.pending.confirmed = true;
+      const cmd = bridge.pending.command;
+      console.log(`[BRIDGE] Konfirmasi diterima dari HP, AI eksekusi: "${cmd}"`);
+      const result = await executeCommand(cmd);
+      return res.json({ ok: true, reply: result, agent: 'JAUN' });
+    }
+
+    // Perintah baru -> simpan pending, minta konfirmasi
+    bridge.pending = { command: text, confirmed: false };
+    addMessage('robot', 'user', `/bigone ${text}`);
+    console.log(`[BRIDGE] Perintah baru dari HP: "${text}"`);
+    res.json({
+      ok: true,
+      reply: `Siap laksanakan: "${text}".\nKirim 'gas bro' di HP untuk konfirmasi, baru aku eksekusi.`,
+      agent: 'JAUN'
+    });
+  } catch (error) {
+    console.error('[BRIDGE Error]:', error.message);
+    res.json({ ok: false, reply: `Error: ${error.message}` });
+  }
 });
 
-// Laptop kirim balasan ke robot
+// Endpoint lama dipertahankan agar tidak error (tak lagi dipakai untuk alur utama)
 app.post('/jaun-reply', (req, res) => {
-  const { message } = req.body;
-  if (!message || !message.trim()) {
-    return res.json({ ok: false, reply: 'Pesan kosong' });
-  }
-  bridge.toRobot.push({ text: message.trim(), ts: Date.now(), delivered: false });
-  res.json({ ok: true, reply: 'Balasan terkirim ke robot (HP).' });
+  res.json({ ok: true, reply: 'Alur baru: konfirmasi & eksekusi ditangani AI server.' });
 });
-
-// Laptop tarik perintah dari robot (konsumsi setelah diambil)
 app.get('/jaun-bridge', (req, res) => {
-  const pending = bridge.toLaptop.filter(m => !m.delivered);
-  pending.forEach(m => { m.delivered = true; });
-  res.json({ messages: pending.map(m => ({ text: m.text })) });
+  res.json({ messages: [] });
 });
-
-// Robot tarik balasan dari laptop (konsumsi setelah diambil)
 app.post('/jaun-poll', (req, res) => {
-  const pending = bridge.toRobot.filter(m => !m.delivered);
-  pending.forEach(m => { m.delivered = true; });
-  res.json({ messages: pending.map(m => ({ text: m.text })) });
+  res.json({ messages: [] });
 });
 
 // ===================== MEMORY ENDPOINTS =====================
