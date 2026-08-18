@@ -316,9 +316,6 @@ app.post('/jaun-poll', (req, res) => {
   pending.forEach(m => { m.delivered = true; });
   res.json({ messages: pending.map(m => ({ text: m.text })) });
 });
-app.post('/jaun-poll', (req, res) => {
-  res.json({ messages: [] });
-});
 
 // ===================== MEMORY ENDPOINTS =====================
 app.get('/memory', (req, res) => {
