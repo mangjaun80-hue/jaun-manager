@@ -47,15 +47,15 @@ function addFact(fact) {
 
 function buildMemoryContext(source) {
   const hist = getHistory(source);
-  const recent = hist.slice(-20);
-  const facts = memory.facts.slice(-10);
+  const recent = hist.slice(-4);
+  const facts = memory.facts.slice(-5);
 
   let ctx = '';
   if (facts.length > 0) {
     ctx += '[INGATAN FAKTA]\n' + facts.map(f => `- ${f.fact}`).join('\n') + '\n\n';
   }
   if (recent.length > 0) {
-    ctx += '[RIWAYAT PERCAKAPAN TERAKHIR]\n' + recent.map(m => `${m.role}: ${m.text}`).join('\n') + '\n\n';
+    ctx += '[PERCAKAPAN TERAKHIR]\n' + recent.map(m => `${m.role}: ${m.text}`).join('\n') + '\n\n';
   }
   return ctx;
 }
@@ -68,8 +68,13 @@ Kamu berbicara SELALU dalam Bahasa Indonesia yang santai, singkat, dan jelas.
 JANGAN pernah menampilkan "thinking process" atau "step by step" ke user.
 Langsung jawab saja, to the point.
 
+ATURAN PENTING: Jawab LANGSUNG pertanyaan/perintah terakhir yang diberikan user.
+JANGAN menceritakan ulang riwayat, JANGAN menyebut "berdasarkan riwayat/percakapan sebelumnya",
+JANGAN membackup/mengulang data history lama. Konteks history hanyalah referensi diam —
+pakai hanya jika diperlukan, dan JANGAN pernah menyebutkannya ke user.
+
 Kamu punya memory yang nyambung dari semua interface (Robot/HP, Telegram, Laptop).
-Ingat semua percakapan user di mana pun terjadi. Sebut user "Mang Jaun" atau "Boss".
+Sebut user "Mang Jaun" atau "Boss".
 
 [PENGETAHUAN]
 JAUN 78 adalah aplikasi asisten pribadi digital berbasis AI.
