@@ -342,6 +342,23 @@ app.get('/jaun-status', (req, res) => {
   });
 });
 
+// ===================== AI WORKER (laptop menjalankan Ollama lokal) =====================
+const aiWorker = require('./aiWorker');
+
+// Laptop polling: tarik task AI
+app.get('/ai-task', (req, res) => {
+  aiWorker.heartbeat();
+  const task = aiWorker.pullTask();
+  res.json({ task });
+});
+
+// Laptop: kirim jawaban AI
+app.post('/ai-answer', (req, res) => {
+  const { id, answer } = req.body;
+  aiWorker.submitAnswer(id, answer);
+  res.json({ ok: true });
+});
+
 // ===================== MEMORY ENDPOINTS =====================
 app.get('/memory', (req, res) => {
   res.json({

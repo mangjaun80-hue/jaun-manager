@@ -47,8 +47,26 @@ async function chat(model, messages, options = {}) {
       });
       return response.choices[0].message.content;
     } catch (error) {
-      console.error(`[Ollama Error] Falling back to Big Pickle:`, error.message);
+      console.error(`[Ollama Error] Falling back:`, error.message);
     }
+  }
+
+  // Coba worker lokal (laptop) dulu — gratis & tanpa kuota
+  try {
+    const aiWorker = require('../aiWorker');
+    if (aiWorker.isWorkerActive()) {
+      console.log(`[Worker] Minta laptop menjawab via Ollama lokal: ${model}`);
+      const ans = await aiWorker.requestAnswer(model, messages, options);
+      if (ans !== null && ans !== undefined) {
+        console.log(`[Worker] Jawaban diterima dari laptop.`);
+        return ans;
+      }
+      console.log(`[Worker] Laptop tidak menjawab tepat waktu, fallback ke cloud.`);
+    } else {
+      console.log(`[Worker] Worker tidak aktif (laptop mati?), fallback ke cloud.`);
+    }
+  } catch (error) {
+    console.error(`[Worker Error]:`, error.message);
   }
 
   // Fallback to Big Pickle (OpenRouter) with rate-limit retry + backoff
