@@ -317,6 +317,15 @@ app.post('/jaun-poll', (req, res) => {
   res.json({ messages: pending.map(m => ({ text: m.text })) });
 });
 
+// Debug: lihat isi antrian bridge
+app.get('/jaun-status', (req, res) => {
+  res.json({
+    pending: bridge.pending,
+    toLaptop: bridge.toLaptop,
+    toRobot: bridge.toRobot
+  });
+});
+
 // ===================== MEMORY ENDPOINTS =====================
 app.get('/memory', (req, res) => {
   res.json({
