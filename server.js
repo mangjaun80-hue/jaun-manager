@@ -95,6 +95,7 @@ Kamu bisa bantu: agenda, jadwal, coding, debug, review, manage Etsy store.
 - Code task → jawab dengan kode yang sudah jadi
 - Debug task → jawab dengan fix yang sudah jadi
 - Review task → jawab dengan review yang sudah jadi
+- Tentang Etsy/toko → WAJIB pakai [DATA ETSY TOKO] yang disediakan. Kasih analisa NYATA berdasarkan data: produk mana yang banyak views, mana yang kurang, saran SEO tags, strategi pricing. JANGAN tanya balik — langsung analisa!
 
 [COMMANDS]
 - "code: ..." → Coding task
@@ -219,7 +220,39 @@ app.post('/jaun', async (req, res) => {
 
     // AI agent — with shared memory context
     const memoryCtx = buildMemoryContext(src);
-    const fullMessage = memoryCtx + JAUN_CONTEXT + "\n\nUser dari: " + src + "\nPertanyaan: " + parsed.message;
+    
+    // Auto-fetch Etsy data if user asks about store review/analysis
+    let etsyContext = '';
+    const lowerMsg = parsed.message.toLowerCase();
+    if (/etsy|toko|store|produk|listing|penjualan|jualan|revenue|order/i.test(lowerMsg)) {
+      try {
+        const [listings, analytics] = await Promise.all([
+          etsy.getListingStats().catch(() => null),
+          etsy.getReceiptsSummary().catch(() => null)
+        ]);
+        if (listings) {
+          etsyContext += '\n[DATA ETSY TOKO]\n';
+          etsyContext += `Total produk aktif: ${listings.totalActive}\n`;
+          etsyContext += 'Listings:\n';
+          (listings.listings || []).forEach((l, i) => {
+            const price = typeof l.price === 'object' ? `${l.price.amount / 100} ${l.price.currency_code}` : l.price;
+            etsyContext += `${i + 1}. ${l.title} — ${price} — ${l.views} views — ${l.favoriters} favoriters\n`;
+          });
+          if (analytics) {
+            etsyContext += `\nTotal orders: ${analytics.totalOrders}\n`;
+            etsyContext += `Revenue: $${analytics.totalRevenue.toFixed(2)}\n`;
+            if (analytics.recentOrders.length > 0) {
+              etsyContext += 'Recent orders:\n';
+              analytics.recentOrders.forEach((o, i) => {
+                etsyContext += `${i + 1}. #${o.id} — $${o.total} (${o.status})\n`;
+              });
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    
+    const fullMessage = memoryCtx + JAUN_CONTEXT + etsyContext + "\n\nUser dari: " + src + "\nPertanyaan: " + parsed.message;
     const result = await route(parsed.message, parsed.agent === 'auto' ? null : parsed.agent, fullMessage);
 
     addMessage(src, 'jaun', result.response);
