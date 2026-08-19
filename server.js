@@ -393,12 +393,41 @@ app.get('/status', async (req, res) => {
   res.json({
     ollama: ollamaOk ? 'running' : 'offline',
     bigpickle: 'openrouter',
-    etsy: 'connected',
+    etsy: etsy.configured ? 'connected' : 'not_configured',
     memory: {
       sources,
       totalFacts: memory.facts.length
     }
   });
+});
+
+// ── ETSY REST ENDPOINTS ────────────────────────────────────────────
+app.get('/etsy/listings', async (req, res) => {
+  try {
+    const listings = await etsy.getListings();
+    res.json({ ok: true, data: listings });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.get('/etsy/stats', async (req, res) => {
+  try {
+    const stats = await etsy.getListingStats();
+    res.json({ ok: true, data: stats });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.get('/etsy/analytics', async (req, res) => {
+  try {
+    const analytics = await etsy.getReceiptsSummary();
+    res.json({ ok: true, data: analytics });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.get('/etsy/shop', async (req, res) => {
+  try {
+    const shop = await etsy.getShop();
+    res.json({ ok: true, data: shop });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
 // ── JAUN DEV OS Proxy ──────────────────────────────────────────────
