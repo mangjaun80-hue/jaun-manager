@@ -403,33 +403,32 @@ app.get('/status', async (req, res) => {
 
 // ── JAUN DEV OS Proxy ──────────────────────────────────────────────
 const DEV_OS_URL = process.env.JAUN_DEV_OS_URL || 'http://127.0.0.1:8787';
-const httpLib = DEV_OS_URL.startsWith('https') ? require('https') : require('http');
 
-function devGet(path) {
-  return new Promise((resolve, reject) => {
-    httpLib.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
-      let d = ''; r.on('data', c => d += c);
-      r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
-    }).on('error', reject);
-  });
+async function devGet(path) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const r = await fetch(`${DEV_OS_URL}${path}`, { signal: ctrl.signal });
+    const d = await r.text();
+    clearTimeout(t);
+    try { return JSON.parse(d); } catch { return { raw: d }; }
+  } catch (e) { clearTimeout(t); throw e; }
 }
 
-function devPost(path, body) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
-    const u = new URL(path, DEV_OS_URL);
-    const req = httpLib.request({
-      hostname: u.hostname, port: u.port || (DEV_OS_URL.startsWith('https') ? 443 : 80), path: u.pathname + (u.search || ''), method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-      timeout: 120000
-    }, (r) => {
-      let d = ''; r.on('data', c => d += c);
-      r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
+async function devPost(path, body) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 120000);
+  try {
+    const r = await fetch(`${DEV_OS_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
     });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    req.write(data); req.end();
-  });
+    const d = await r.text();
+    clearTimeout(t);
+    try { return JSON.parse(d); } catch { return { raw: d }; }
+  } catch (e) { clearTimeout(t); throw e; }
 }
 
 app.get('/dev/health', async (req, res) => {
