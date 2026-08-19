@@ -403,11 +403,11 @@ app.get('/status', async (req, res) => {
 
 // ── JAUN DEV OS Proxy ──────────────────────────────────────────────
 const DEV_OS_URL = process.env.JAUN_DEV_OS_URL || 'http://127.0.0.1:8787';
-const http = require('http');
+const httpLib = DEV_OS_URL.startsWith('https') ? require('https') : require('http');
 
 function devGet(path) {
   return new Promise((resolve, reject) => {
-    http.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
+    httpLib.get(`${DEV_OS_URL}${path}`, { timeout: 10000 }, (r) => {
       let d = ''; r.on('data', c => d += c);
       r.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } });
     }).on('error', reject);
@@ -418,8 +418,8 @@ function devPost(path, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const u = new URL(path, DEV_OS_URL);
-    const req = http.request({
-      hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+    const req = httpLib.request({
+      hostname: u.hostname, port: u.port || (DEV_OS_URL.startsWith('https') ? 443 : 80), path: u.pathname + (u.search || ''), method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
       timeout: 120000
     }, (r) => {
