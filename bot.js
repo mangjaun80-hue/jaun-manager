@@ -3,10 +3,17 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { route, routeStream, getAgentInfo } = require('./router');
 const etsy = require('./integrations/etsy');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const BOT_TOKEN = process.env.TG_TOKEN;
 const ALLOWED_CHAT_IDS = process.env.TELEGRAM_ALLOWED_CHAT_IDS?.split(',').map(id => id.trim()) || [];
 const MAX_MESSAGE_LENGTH = 4000;
+
+// Voice mode tracking
+const voiceMode = new Set();
 
 if (!BOT_TOKEN) {
   console.error('❌ TG_TOKEN harus diisi di file .env');
@@ -40,6 +47,33 @@ function splitMessage(text, maxLength) {
   }
   
   return chunks;
+}
+
+function textToSpeech(text) {
+  const tmpFile = path.join(os.tmpdir(), `tts_${Date.now()}.ogg`);
+  const cleanText = text.replace(/[*_`#\[\]]/g, '').replace(/\n+/g, '. ').slice(0, 3000);
+  try {
+    execSync(`python tts.py "${cleanText.replace(/"/g, '\\"')}" "${tmpFile}"`, { timeout: 30000 });
+    return tmpFile;
+  } catch (e) {
+    console.error('TTS error:', e.message);
+    return null;
+  }
+}
+
+async function sendVoiceMessage(chatId, text) {
+  const tmpFile = textToSpeech(text);
+  if (tmpFile && fs.existsSync(tmpFile)) {
+    try {
+      await bot.sendVoice(chatId, tmpFile);
+      fs.unlinkSync(tmpFile);
+      return true;
+    } catch (e) {
+      console.error('Send voice error:', e.message);
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    }
+  }
+  return false;
 }
 
 async function sendMessage(chatId, text, parseMode = 'Markdown') {
@@ -291,9 +325,28 @@ bot.onText(/\/help/, (msg) => {
   
   bot.sendMessage(chatId,
     `📖 *Bantuan:*\n\n` +
-    `Ketik /start untuk melihat semua command.`,
+    `Ketik /start untuk melihat semua command.\n\n` +
+    `🎤 *Voice Mode:*\n` +
+    `/voice - Aktifkan mode suara\n` +
+    `/stop - Matikan mode suara`,
     { parse_mode: 'Markdown' }
   );
+});
+
+bot.onText(/\/voice/, async (msg) => {
+  const chatId = msg.chat.id;
+  if (!isAuthorized(chatId)) return;
+  
+  voiceMode.add(chatId);
+  await bot.sendMessage(chatId, '🎤 *Voice Mode AKTIF!*\n\nSemua jawaban akan dikirim sebagai voice message.\nKetik /stop untuk matikan.', { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/stop/, async (msg) => {
+  const chatId = msg.chat.id;
+  if (!isAuthorized(chatId)) return;
+  
+  voiceMode.delete(chatId);
+  await bot.sendMessage(chatId, '🔇 *Voice Mode DIMATIKAN!*\n\nJawaban kembali teks biasa.', { parse_mode: 'Markdown' });
 });
 
 bot.on('message', async (msg) => {
@@ -308,7 +361,16 @@ bot.on('message', async (msg) => {
   await bot.sendMessage(chatId, '⏳ Memproses...');
   try {
     const result = await route(msg.text);
-    await sendMessage(chatId, `✅ *[${result.agent}]:*\n${result.response}`);
+    const reply = `✅ *[${result.agent}]:*\n${result.response}`;
+    
+    if (voiceMode.has(chatId)) {
+      const sent = await sendVoiceMessage(chatId, result.response);
+      if (!sent) {
+        await sendMessage(chatId, reply);
+      }
+    } else {
+      await sendMessage(chatId, reply);
+    }
   } catch (error) {
     await bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
