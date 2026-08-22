@@ -396,15 +396,15 @@ h1{font-size:2rem;color:#fff;margin-bottom:2px}
 <p class="sub">Mission Control — Desa Cipaku, RT 01-05</p>
 <div class="badge">ALL SYSTEMS ONLINE</div>
 <div class="services">
-<a href="https://p.dpdns.org/devjaun" class="s"><span class="icon">💻</span><div class="sinfo"><div class="sname">JAUN DEV OS</div><div class="sdesc">AI-Powered Development Platform — Chat, Files, Search, Git, Scheduler</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://jaun-dev-os-production.up.railway.app" class="s"><span class="icon">💻</span><div class="sinfo"><div class="sname">JAUN DEV OS</div><div class="sdesc">AI-Powered Development Platform — Chat, Files, Search, Git, Scheduler</div></div><span class="arrow">&#8250;</span></a>
 <a href="https://t.me/gold_jaun_bot" class="s"><span class="icon">🤖</span><div class="sinfo"><div class="sname">Telegram Bot</div><div class="sdesc">Voice mode, multi-agent routing, smart commands</div></div><span class="arrow">&#8250;</span></a>
 <a href="https://www.etsy.com/shop/BIGTWO" class="s"><span class="icon">🛒</span><div class="sinfo"><div class="sname">Etsy Store — BIGTWO</div><div class="sdesc">33 digital product listings, AI-powered prompts & tools</div></div><span class="arrow">&#8250;</span></a>
-<a href="https://p.dpdns.org/devjaun" class="s"><span class="icon">🧠</span><div class="sinfo"><div class="sname">Ollama AI</div><div class="sdesc">6 local models — Qwen, DeepSeek, VL</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://jaun-dev-os-production.up.railway.app" class="s"><span class="icon">🧠</span><div class="sinfo"><div class="sname">Ollama AI</div><div class="sdesc">6 local models — Qwen, DeepSeek, VL</div></div><span class="arrow">&#8250;</span></a>
 <a href="https://dash.domain.digitalplat.org/dashboard" class="s"><span class="icon">🌐</span><div class="sinfo"><div class="sname">DigitalPlat Dashboard</div><div class="sdesc">Domain management, DNS, Pages</div></div><span class="arrow">&#8250;</span></a>
 <a href="https://devjaun78.pythonanywhere.com" class="s"><span class="icon">☁️</span><div class="sinfo"><div class="sname">PythonAnywhere</div><div class="sdesc">Cloud server, Etsy monitoring, scheduled tasks</div></div><span class="arrow">&#8250;</span></a>
 </div>
 <div class="btns">
-<a href="https://p.dpdns.org/devjaun" class="btn primary">Open JAUN DEV OS</a>
+<a href="https://jaun-dev-os-production.up.railway.app" class="btn primary">Open JAUN DEV OS</a>
 <a href="https://t.me/gold_jaun_bot" class="btn secondary">Telegram Bot</a>
 </div>
 <p class="foot">Built with love by Mang Jaun — Desa Cipaku, RT 01-05</p>
