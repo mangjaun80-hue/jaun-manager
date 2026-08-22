@@ -671,7 +671,7 @@ if (TG_TOKEN) {
       );
       return;
     }
-    if (text.startsWith('/dev')) {
+    if (text && text.startsWith('/dev')) {
       try {
         const parts = text.trim().split(/\s+/);
         const sub = (parts[1] || '').toLowerCase();
