@@ -4,6 +4,13 @@ const express = require('express');
 const cors = require('cors');
 const { route, analyzeTask } = require('./router');
 const etsy = require('./integrations/etsy');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+// Voice mode tracking (per chatId)
+const voiceMode = new Set();
 
 const app = express();
 app.use(cors());
@@ -538,6 +545,41 @@ if (TG_TOKEN) {
     return chunks;
   }
 
+  function textToSpeech(text) {
+    const tmpFile = path.join(os.tmpdir(), `tts_${Date.now()}.ogg`);
+    const cleanText = text.replace(/[*_`#\[\]]/g, '').replace(/\n+/g, '. ').slice(0, 3000);
+    try {
+      execSync(`python tts.py "${cleanText.replace(/"/g, '\\"')}" "${tmpFile}"`, { timeout: 30000 });
+      return tmpFile;
+    } catch (e) {
+      console.error('TTS error:', e.message);
+      return null;
+    }
+  }
+
+  async function sendVoice(chatId, text) {
+    const tmpFile = textToSpeech(text);
+    if (tmpFile && fs.existsSync(tmpFile)) {
+      try {
+        const FormData = require('form-data');
+        const form = new FormData();
+        form.append('chat_id', chatId);
+        form.append('voice', fs.createReadStream(tmpFile));
+        const resp = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendVoice`, {
+          method: 'POST',
+          body: form,
+          headers: form.getHeaders()
+        });
+        fs.unlinkSync(tmpFile);
+        return resp.ok;
+      } catch (e) {
+        console.error('Send voice error:', e.message);
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      }
+    }
+    return false;
+  }
+
   async function tgApi(method, body) {
     const resp = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
       method: 'POST',
@@ -602,8 +644,18 @@ if (TG_TOKEN) {
         `JAUN Manager\n\n` +
         `Ketik pesan langsung untuk ngobrol.\n` +
         `Pesan dari Telegram, Robot HP, dan Laptop share memory yang sama.\n\n` +
-        `Commands: /start /status /memory /dev /help`
+        `Commands: /start /status /memory /dev /voice /stop /help`
       );
+      return;
+    }
+    if (text === '/voice') {
+      voiceMode.add(chatId);
+      await sendReply(chatId, 'Voice Mode AKTIF! Semua jawaban jadi voice message.\nKetik /stop untuk matikan.');
+      return;
+    }
+    if (text === '/stop') {
+      voiceMode.delete(chatId);
+      await sendReply(chatId, 'Voice Mode DIMATIKAN. Jawaban teks biasa.');
       return;
     }
     if (text === '/status') {
@@ -682,7 +734,13 @@ if (TG_TOKEN) {
       const result = await route(fullMessage, parsed.agent === 'auto' ? null : parsed.agent);
 
       addMessage(source, 'jaun', result.response);
-      await sendReply(chatId, result.response);
+
+      if (voiceMode.has(chatId)) {
+        const sent = await sendVoice(chatId, result.response);
+        if (!sent) await sendReply(chatId, result.response);
+      } else {
+        await sendReply(chatId, result.response);
+      }
     } catch (error) {
       console.error('[TG Error]:', error.message);
       const friendly = /429|rate limit|rate_limit|too many/i.test(String(error.message))
