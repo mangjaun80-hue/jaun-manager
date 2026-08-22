@@ -366,57 +366,46 @@ app.get('/', (req, res) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JAUN DEV OS</title>
+<title>Mang Jaun — Mission Control</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{max-width:600px;width:90%;background:#111;border:1px solid #222;border-radius:16px;padding:40px 32px;text-align:center}
-h1{font-size:2rem;color:#fff;margin-bottom:4px}
+body{font-family:Arial,Helvetica,sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{max-width:680px;width:100%;background:#111;border:1px solid #222;border-radius:16px;padding:40px 32px;text-align:center}
+h1{font-size:2rem;color:#fff;margin-bottom:2px}
 .sub{color:#888;font-size:.85rem;margin-bottom:24px}
-.badge{display:inline-block;background:#00c853;color:#000;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700;margin-bottom:24px}
-.features{text-align:left;margin:20px 0}
-.f{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1a1a1a;font-size:.85rem}
-.f:last-child{border:none}
-.icon{font-size:1rem;width:24px;text-align:center}
-.btns{display:flex;gap:12px;margin-top:24px;justify-content:center;flex-wrap:wrap}
-.btn{display:inline-block;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:.85rem;font-weight:700;transition:.2s}
+.badge{display:inline-block;background:#00c853;color:#000;padding:4px 14px;border-radius:20px;font-size:.75rem;font-weight:700;margin-bottom:28px}
+.services{text-align:left;margin:0 0 28px}
+.s{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #1a1a1a;font-size:.85rem;text-decoration:none;color:#e0e0e0;transition:.15s}
+.s:hover{color:#00c853}
+.s:last-child{border:none}
+.icon{font-size:1.2rem;width:28px;text-align:center;flex-shrink:0}
+.sinfo{flex:1}
+.sname{font-weight:700;font-size:.9rem}
+.sdesc{font-size:.72rem;color:#666;margin-top:2px}
+.arrow{color:#444;font-size:.8rem}
+.btns{display:flex;gap:12px;margin-top:8px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:.85rem;font-weight:700;transition:.2s}
 .primary{background:#00c853;color:#000}.primary:hover{background:#00e676}
 .secondary{background:#1a1a1a;color:#fff;border:1px solid #333}.secondary:hover{background:#222}
-.eps{margin-top:24px;text-align:left}
-.eps h3{font-size:.8rem;color:#666;margin-bottom:8px}
-.ep{display:inline-block;background:#1a1a1a;padding:3px 8px;border-radius:4px;font-size:.7rem;color:#aaa;margin:2px;font-family:monospace}
-.foot{margin-top:24px;font-size:.7rem;color:#555}
+.foot{margin-top:28px;font-size:.7rem;color:#555}
 </style>
 </head>
 <body>
 <div class="card">
-<h1>JAUN DEV OS</h1>
-<p class="sub">AI-Powered Development Platform by Mang Jaun</p>
-<div class="badge">ONLINE</div>
-<div class="features">
-<div class="f"><span class="icon">💬</span>Smart Chat — AUTO/LOCAL/CLOUD mode</div>
-<div class="f"><span class="icon">📁</span>File Explorer — Read, edit, run files</div>
-<div class="f"><span class="icon">🔍</span>Web Search — DuckDuckGo + Scraper</div>
-<div class="f"><span class="icon">🔧</span>Git Integration — Clone, commit, push</div>
-<div class="f"><span class="icon">📅</span>Task Scheduler — Automate tasks</div>
-<div class="f"><span class="icon">🧠</span>Long-term Memory — AI remembers</div>
+<h1>Mang Jaun</h1>
+<p class="sub">Mission Control — Desa Cipaku, RT 01-05</p>
+<div class="badge">ALL SYSTEMS ONLINE</div>
+<div class="services">
+<a href="https://p.dpdns.org/devjaun" class="s"><span class="icon">💻</span><div class="sinfo"><div class="sname">JAUN DEV OS</div><div class="sdesc">AI-Powered Development Platform — Chat, Files, Search, Git, Scheduler</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://t.me/gold_jaun_bot" class="s"><span class="icon">🤖</span><div class="sinfo"><div class="sname">Telegram Bot</div><div class="sdesc">Voice mode, multi-agent routing, smart commands</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://www.etsy.com/shop/BIGTWO" class="s"><span class="icon">🛒</span><div class="sinfo"><div class="sname">Etsy Store — BIGTWO</div><div class="sdesc">33 digital product listings, AI-powered prompts & tools</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://p.dpdns.org/devjaun" class="s"><span class="icon">🧠</span><div class="sinfo"><div class="sname">Ollama AI</div><div class="sdesc">6 local models — Qwen, DeepSeek, VL</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://dash.domain.digitalplat.org/dashboard" class="s"><span class="icon">🌐</span><div class="sinfo"><div class="sname">DigitalPlat Dashboard</div><div class="sdesc">Domain management, DNS, Pages</div></div><span class="arrow">&#8250;</span></a>
+<a href="https://devjaun78.pythonanywhere.com" class="s"><span class="icon">☁️</span><div class="sinfo"><div class="sname">PythonAnywhere</div><div class="sdesc">Cloud server, Etsy monitoring, scheduled tasks</div></div><span class="arrow">&#8250;</span></a>
 </div>
 <div class="btns">
-<a href="https://t.me/gold_jaun_bot" class="btn primary">Telegram Bot</a>
-<a href="https://p.dpdns.org/devjaun" class="btn secondary">JAUN DEV OS</a>
-</div>
-<div class="eps">
-<h3>API ENDPOINTS</h3>
-<span class="ep">/health</span>
-<span class="ep">/status</span>
-<span class="ep">/jaun-status</span>
-<span class="ep">/jaun-bridge</span>
-<span class="ep">/ai-task</span>
-<span class="ep">/memory</span>
-<span class="ep">/etsy/listings</span>
-<span class="ep">/etsy/stats</span>
-<span class="ep">/etsy/shop</span>
-<span class="ep">/dev/health</span>
+<a href="https://p.dpdns.org/devjaun" class="btn primary">Open JAUN DEV OS</a>
+<a href="https://t.me/gold_jaun_bot" class="btn secondary">Telegram Bot</a>
 </div>
 <p class="foot">Built with love by Mang Jaun — Desa Cipaku, RT 01-05</p>
 </div>
