@@ -360,6 +360,16 @@ app.post('/jaun-reply', (req, res) => {
 });
 
 // ===== Laptop polling: tarik EXECUTE =====
+app.get('/', (req, res) => {
+  res.json({
+    name: 'JAUN Manager API',
+    version: '2.0',
+    status: 'online',
+    creator: 'Mang Jaun',
+    endpoints: ['/health', '/status', '/jaun-status', '/jaun-bridge', '/ai-task', '/memory', '/etsy/listings', '/etsy/stats', '/etsy/analytics', '/etsy/shop', '/dev/health', '/tg/webhook']
+  });
+});
+
 app.get('/jaun-bridge', (req, res) => {
   const pending = bridge.toLaptop.filter(m => !m.delivered);
   pending.forEach(m => { m.delivered = true; });
