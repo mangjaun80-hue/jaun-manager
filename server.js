@@ -403,7 +403,7 @@ h1{font-size:2rem;color:#fff;margin-bottom:4px}
 </div>
 <div class="btns">
 <a href="https://t.me/gold_jaun_bot" class="btn primary">Telegram Bot</a>
-<a href="https://dash.domain.digitalplat.org/" class="btn secondary">Dashboard</a>
+<a href="https://dash.domain.digitalplat.org/dashboard" class="btn secondary">Dashboard</a>
 </div>
 <div class="eps">
 <h3>API ENDPOINTS</h3>
